@@ -17,6 +17,8 @@ A drop-in helper for the **Scrap Mechanic Mod Tool** that:
 - `ModTool.exe` SHA-256:
   `853dc33c1a6ee300f4152cfc76564c71928efdc0d34fc7bcd4b3e85cbaa9df4e`
 - Scrap Mechanic 1.0.6.889 (the Mod Tool shipped with that build).
+- `dist/version.dll` (v1.0.0) SHA-256:
+  `9b90908e25c0b0a360173ff7579c010e1e69bf74ab5eaf1466966d2735916b88`
 
 The tool is deliberately **not tied to fixed addresses**. It uses the
 Mod Tool's import table and byte patterns, so a new Mod Tool build will
