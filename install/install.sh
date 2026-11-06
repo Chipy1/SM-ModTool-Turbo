@@ -12,19 +12,22 @@ if [ ! -f "$target/ModTool.exe" ]; then
     echo "error: $target/ModTool.exe not found" >&2
     exit 1
 fi
-if [ ! -f "$here/dist/version.dll" ]; then
-    echo "error: run ./build.sh first (dist/version.dll missing)" >&2
+if [ ! -f "$here/dist/d3d11.dll" ]; then
+    echo "error: run ./build.sh first (dist/d3d11.dll missing)" >&2
     exit 1
 fi
 stamp=$(date +%Y%m%d-%H%M%S)
+if [ -f "$target/d3d11.dll" ]; then
+    cp "$target/d3d11.dll" "$target/d3d11.dll.bak.$stamp"
+    echo "backed up existing d3d11.dll -> d3d11.dll.bak.$stamp"
+fi
 if [ -f "$target/version.dll" ]; then
-    cp "$target/version.dll" "$target/version.dll.bak.$stamp"
-    echo "backed up existing version.dll -> version.dll.bak.$stamp"
+    echo "note: an old version.dll is present; v1.0.0 of this mod used that name and it is bypassed by Proton. Remove it if it is the old ModTool Turbo proxy."
 fi
 if [ -f "$target/ModToolTurbo.ini" ]; then
     cp "$target/ModToolTurbo.ini" "$target/ModToolTurbo.ini.bak.$stamp"
     echo "backed up existing ModToolTurbo.ini -> ModToolTurbo.ini.bak.$stamp"
 fi
-cp "$here/dist/version.dll" "$target/version.dll"
+cp "$here/dist/d3d11.dll" "$target/d3d11.dll"
 cp "$here/dist/ModToolTurbo.ini" "$target/ModToolTurbo.ini"
 echo "installed into $target"

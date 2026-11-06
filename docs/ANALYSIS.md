@@ -10,6 +10,18 @@ Tested binary:
   `853dc33c1a6ee300f4152cfc76564c71928efdc0d34fc7bcd4b3e85cbaa9df4e`
 - PE32+ x86-64, MSVC 19.42, image base `0x140000000`.
 
+## Host DLL
+
+The tested Mod Tool imports only two D3D11 entry points
+(`D3D11CreateDevice`, `D3D11CreateDeviceAndSwapChain`). Proton sets
+`WINEDLLOVERRIDES=d3d11=native`, so an app-local `d3d11.dll` is loaded.
+The DLL forwards those two functions to the real D3D11 implementation and
+installs the hooks from `DllMain`.
+
+The initial `version.dll` proxy (v1.0.0) did **not** load under Proton:
+Wine reported the app-local `VERSION.dll` as `builtin` and used its own
+implementation. `d3d11.dll` is the reliable host on both Windows and Proton.
+
 ## Upload flow
 
 | Address | Role |
@@ -82,9 +94,16 @@ revalidating caches, even when only a handful of files were stale.
 
 The Mod Tool checks the compiler process exit code and then proceeds with
 the Workshop upload. The DLL replaces the process with
-`cmd.exe /d /c exit 0` only when the content, compiler binary and generated
-cache all match a previously successful run. The state file is
+`cmd.exe /d /c exit 0` only when the content and compiler binary match a
+previously successful run and the `Cache` directory still exists with at
+least one file. The state file is
 `%LOCALAPPDATA%\SMModToolTurbo\compile-cache.txt`.
+
+Do **not** add the exact `Cache` file list to the skip decision. The Mod
+Tool prunes stale cache entries before each compiler run (observed: the same
+five `.mco`/`.tco` files for the tested custom game). A manifest comparison
+would therefore never match. The content fingerprint is the source of truth;
+the cache is a local, regenerable artifact.
 
 ## Rebuilding the patterns for a new Mod Tool
 

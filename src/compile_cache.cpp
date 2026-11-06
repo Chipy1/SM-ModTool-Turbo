@@ -210,65 +210,10 @@ bool CacheHasFiles(const std::wstring& ugc) {
     return found;
 }
 
-bool ComputeCacheFingerprint(const std::wstring& ugc, unsigned long long& out) {
-    std::wstring root = JoinPath(ugc, L"Cache");
-    if (!DirExists(root)) return false;
-
-    struct CacheFile { std::wstring rel; unsigned long long size; FILETIME mtime; };
-    std::vector<CacheFile> files;
-    std::vector<std::wstring> pending;
-    pending.push_back(L"");
-    for (size_t index = 0; index < pending.size(); ++index) {
-        std::wstring rel = pending[index];
-        WIN32_FIND_DATAW fd;
-        HANDLE h = FindFirstFileW(JoinPath(JoinPath(root, rel), L"*").c_str(), &fd);
-        if (h == INVALID_HANDLE_VALUE) {
-            DWORD e = GetLastError();
-            if (e != ERROR_FILE_NOT_FOUND) return false;
-            continue;
-        }
-        do {
-            std::wstring name = fd.cFileName;
-            if (name == L"." || name == L"..") continue;
-            std::wstring childRel = rel.empty() ? name : rel + L"\\" + name;
-            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-                if (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) continue;
-                pending.push_back(childRel);
-            } else {
-                CacheFile f;
-                f.rel = childRel;
-                f.size = ((unsigned long long)fd.nFileSizeHigh << 32) | fd.nFileSizeLow;
-                f.mtime = fd.ftLastWriteTime;
-                files.push_back(f);
-            }
-        } while (FindNextFileW(h, &fd));
-        FindClose(h);
-    }
-
-    std::sort(files.begin(), files.end(), [](const CacheFile& a, const CacheFile& b) {
-        int c = _wcsicmp(a.rel.c_str(), b.rel.c_str());
-        if (c != 0) return c < 0;
-        return a.rel < b.rel;
-    });
-
-    unsigned long long h = HashBytes(kFnvOffset, "MTT1CACHE", 9);
-    unsigned long long count = (unsigned long long)files.size();
-    h = HashBytes(h, &count, sizeof(count));
-    for (size_t i = 0; i < files.size(); ++i) {
-        std::wstring relLower = LowerCopy(files[i].rel);
-        h = HashBytes(h, relLower.data(), relLower.size() * sizeof(wchar_t));
-        h = HashBytes(h, &files[i].size, sizeof(files[i].size));
-        h = HashBytes(h, &files[i].mtime, sizeof(files[i].mtime));
-    }
-    out = h;
-    return !files.empty();
-}
-
 struct StateEntry {
     unsigned long long path = 0;
     unsigned long long fp = 0;
     unsigned long long comp = 0;
-    unsigned long long cache = 0;
 };
 
 std::wstring StateFilePath(HINSTANCE self) {
@@ -315,11 +260,10 @@ bool LoadState(std::vector<StateEntry>& out) {
         std::string line = data.substr(pos, end - pos);
         pos = end + 1;
         if (line.empty() || line[0] == '#') continue;
-        unsigned long long p = 0, f = 0, c = 0, ch = 0;
-        int n = sscanf(line.c_str(), "%llx %llx %llx %llx", &p, &f, &c, &ch);
-        if (n >= 3) {
+        unsigned long long p = 0, f = 0, c = 0;
+        if (sscanf(line.c_str(), "%llx %llx %llx", &p, &f, &c) == 3) {
             StateEntry e;
-            e.path = p; e.fp = f; e.comp = c; e.cache = (n >= 4 ? ch : 0);
+            e.path = p; e.fp = f; e.comp = c;
             out.push_back(e);
         }
     }
@@ -334,8 +278,8 @@ bool WriteState(const std::vector<StateEntry>& entries) {
     std::string data = "# SM ModTool Turbo compile cache v1\n";
     char line[128];
     for (size_t i = 0; i < entries.size(); ++i) {
-        int n = _snprintf(line, sizeof(line), "%016llx %016llx %016llx %016llx\n",
-                          entries[i].path, entries[i].fp, entries[i].comp, entries[i].cache);
+        int n = _snprintf(line, sizeof(line), "%016llx %016llx %016llx\n",
+                          entries[i].path, entries[i].fp, entries[i].comp);
         if (n > 0) data.append(line, (size_t)n);
     }
     DWORD written = 0;
@@ -350,21 +294,18 @@ bool WriteState(const std::vector<StateEntry>& entries) {
                        MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
 }
 
-bool LookupState(unsigned long long pathHash, unsigned long long fp, unsigned long long comp,
-                 unsigned long long cacheHash) {
+bool LookupState(unsigned long long pathHash, unsigned long long fp, unsigned long long comp) {
     std::vector<StateEntry> entries;
     if (!LoadState(entries)) return false;
     for (size_t i = 0; i < entries.size(); ++i) {
-        if (entries[i].path == pathHash && entries[i].fp == fp &&
-            entries[i].comp == comp && entries[i].cache == cacheHash) {
+        if (entries[i].path == pathHash && entries[i].fp == fp && entries[i].comp == comp) {
             return true;
         }
     }
     return false;
 }
 
-void RememberState(unsigned long long pathHash, unsigned long long fp, unsigned long long comp,
-                    unsigned long long cacheHash) {
+void RememberState(unsigned long long pathHash, unsigned long long fp, unsigned long long comp) {
     if (!g_state_cs_init) return;
     EnterCriticalSection(&g_state_cs);
     std::vector<StateEntry> entries;
@@ -374,14 +315,13 @@ void RememberState(unsigned long long pathHash, unsigned long long fp, unsigned 
             if (entries[i].path == pathHash) {
                 entries[i].fp = fp;
                 entries[i].comp = comp;
-                entries[i].cache = cacheHash;
                 found = true;
                 break;
             }
         }
         if (!found) {
             StateEntry e;
-            e.path = pathHash; e.fp = fp; e.comp = comp; e.cache = cacheHash;
+            e.path = pathHash; e.fp = fp; e.comp = comp;
             entries.push_back(e);
         }
         if (!WriteState(entries)) {
@@ -405,10 +345,8 @@ DWORD WINAPI WatcherThread(LPVOID param) {
     DWORD code = 1;
     if (GetExitCodeProcess(ctx->process, &code) && code == 0) {
         unsigned long long fp = 0;
-        unsigned long long cacheHash = 0;
-        if (ComputeContentFingerprint(ctx->ugc, fp) && fp == ctx->fingerprint &&
-            ComputeCacheFingerprint(ctx->ugc, cacheHash)) {
-            RememberState(HashPath(ctx->ugc), fp, ctx->compiler_sig, cacheHash);
+        if (ComputeContentFingerprint(ctx->ugc, fp) && fp == ctx->fingerprint) {
+            RememberState(HashPath(ctx->ugc), fp, ctx->compiler_sig);
             LogLine(L"content compile succeeded; cache recorded for %s", ctx->ugc.c_str());
         } else {
             LogLine(L"content changed during compile; cache not recorded for %s", ctx->ugc.c_str());
@@ -562,12 +500,7 @@ bool ShouldSkipCompile(CompileRequest& req) {
         LogLine(L"no existing cache for %s; compile will run", req.ugc_path.c_str());
         return false;
     }
-    unsigned long long cacheHash = 0;
-    if (!ComputeCacheFingerprint(req.ugc_path, cacheHash)) {
-        LogLine(L"could not fingerprint cache for %s; compile will run", req.ugc_path.c_str());
-        return false;
-    }
-    if (LookupState(HashPath(req.ugc_path), req.fingerprint, req.compiler_sig, cacheHash)) {
+    if (LookupState(HashPath(req.ugc_path), req.fingerprint, req.compiler_sig)) {
         LogLine(L"skipping unchanged content compile for %s", req.ugc_path.c_str());
         return true;
     }
