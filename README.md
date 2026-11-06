@@ -17,8 +17,8 @@ A drop-in helper for the **Scrap Mechanic Mod Tool** that:
 - `ModTool.exe` SHA-256:
   `853dc33c1a6ee300f4152cfc76564c71928efdc0d34fc7bcd4b3e85cbaa9df4e`
 - Scrap Mechanic 1.0.6.889 (the Mod Tool shipped with that build).
-- `dist/d3d11.dll` (v1.0.1) SHA-256:
-  `68be9b5df78fb3ebd48c30dc58b4eb2c87e2d602a138a09cf2d750e7d1307b89`
+- `dist/d3d11.dll` (v1.0.2) SHA-256:
+  `dc7ef3085105aa11fe06f57d3107f467dd4af9378f6f5d20efed9ea0de4366ce`
 
 The tool is deliberately **not tied to fixed addresses**. It uses the
 Mod Tool's import table and byte patterns, so a new Mod Tool build will
@@ -151,9 +151,11 @@ triggered end-to-end here.
 
 - The Mod Tool must still run its normal validation and Workshop upload.
   This tool only removes the confirmation click and the redundant compile.
-- The d3d11 proxy exports the two functions the tested Mod Tool imports. A
-  future Mod Tool that imports additional D3D11 entry points would need
-  those added to `src/d3d11_exports.cpp`.
+- The d3d11 proxy exports the standard D3D11 entry points and safe stubs
+  for the undocumented Core* exports, so a future Mod Tool that imports a
+  different subset still loads. Only `D3D11CreateDevice` and
+  `D3D11CreateDeviceAndSwapChain` are fully forwarded; the Core* stubs
+  return `E_NOTIMPL` if called.
 - Pattern-based hooks are best-effort on future builds. Check
   `ModToolTurbo.log` after a Mod Tool update; if a feature is reported as
   unavailable, use the vanilla upload once or update the patterns in

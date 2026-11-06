@@ -319,7 +319,7 @@ static DWORD WINAPI ConfirmationHookThread(LPVOID) {
         LogLine(L"upload confirmation hook: singleton pattern not found");
         return 0;
     }
-    for (int i = 0; i < 300; ++i) {
+    for (int i = 0; i < 6000; ++i) {
         void* singleton = *slot;
         if (singleton) {
             void** vtable = (void**)*(void**)singleton;
@@ -338,7 +338,7 @@ static DWORD WINAPI ConfirmationHookThread(LPVOID) {
         }
         Sleep(100);
     }
-    LogLine(L"upload confirmation hook timed out waiting for the UI singleton");
+    LogLine(L"upload confirmation hook timed out waiting for the UI singleton (10 min)");
     return 0;
 }
 

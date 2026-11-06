@@ -7,6 +7,7 @@
 // untouched; the ModTool Turbo hooks are installed by dllmain.cpp.
 #include <windows.h>
 #include <d3d11.h>
+#include <d3d11on12.h>
 #include <dxgi.h>
 
 namespace {
@@ -66,4 +67,43 @@ extern "C" __declspec(dllexport) HRESULT WINAPI D3D11CreateDeviceAndSwapChain(
     return fn(adapter, driver_type, software, flags, feature_levels,
               feature_level_count, sdk_version, swap_chain_desc, swap_chain,
               device, feature_level, context);
+}
+
+// The current Mod Tool imports only the two device-creation entry points.
+// These additional exports keep the proxy loadable if a future Mod Tool
+// imports more of the standard D3D11 surface. D3D11On12CreateDevice is
+// forwarded; the undocumented Core* entries fail cleanly instead of making
+// the loader reject the proxy.
+extern "C" __declspec(dllexport) HRESULT WINAPI D3D11On12CreateDevice(
+    IUnknown* device, UINT flags, const D3D_FEATURE_LEVEL* feature_levels,
+    UINT feature_level_count, IUnknown* const* queues, UINT queue_count,
+    UINT node_mask, ID3D11Device** d3d11_device,
+    ID3D11DeviceContext** d3d11_immediate_context,
+    D3D_FEATURE_LEVEL* obtained_feature_level) {
+    const HMODULE module = OriginalD3D11();
+    if (!module) return HRESULT_FROM_WIN32(ERROR_MOD_NOT_FOUND);
+    typedef HRESULT (WINAPI *Fn)(IUnknown*, UINT, const D3D_FEATURE_LEVEL*, UINT,
+                                 IUnknown* const*, UINT, UINT, ID3D11Device**,
+                                 ID3D11DeviceContext**, D3D_FEATURE_LEVEL*);
+    const auto fn = reinterpret_cast<Fn>(GetProcAddress(module, "D3D11On12CreateDevice"));
+    if (!fn) return HRESULT_FROM_WIN32(ERROR_PROC_NOT_FOUND);
+    return fn(device, flags, feature_levels, feature_level_count, queues,
+              queue_count, node_mask, d3d11_device, d3d11_immediate_context,
+              obtained_feature_level);
+}
+
+extern "C" __declspec(dllexport) HRESULT WINAPI D3D11CoreCreateDevice() {
+    return E_NOTIMPL;
+}
+
+extern "C" __declspec(dllexport) HRESULT WINAPI D3D11CoreCreateLayeredDevice() {
+    return E_NOTIMPL;
+}
+
+extern "C" __declspec(dllexport) UINT WINAPI D3D11CoreGetLayeredDeviceSize() {
+    return 0;
+}
+
+extern "C" __declspec(dllexport) HRESULT WINAPI D3D11CoreRegisterLayers() {
+    return E_NOTIMPL;
 }

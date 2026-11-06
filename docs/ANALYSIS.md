@@ -22,6 +22,15 @@ The initial `version.dll` proxy (v1.0.0) did **not** load under Proton:
 Wine reported the app-local `VERSION.dll` as `builtin` and used its own
 implementation. `d3d11.dll` is the reliable host on both Windows and Proton.
 
+The proxy exports:
+
+- `D3D11CreateDevice`, `D3D11CreateDeviceAndSwapChain` — fully forwarded.
+- `D3D11On12CreateDevice` — forwarded if present.
+- `D3D11CoreCreateDevice`, `D3D11CoreCreateLayeredDevice`,
+  `D3D11CoreGetLayeredDeviceSize`, `D3D11CoreRegisterLayers` — stubs so a
+  future Mod Tool that imports them still resolves the proxy. They return
+  `E_NOTIMPL`/`0` if called.
+
 ## Upload flow
 
 | Address | Role |
