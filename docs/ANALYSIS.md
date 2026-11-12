@@ -133,3 +133,32 @@ the cache is a local, regenerable artifact.
 
 If a pattern is missing, the affected feature disables itself and logs a
 warning; it does not patch random code.
+
+
+## ContentCompiler icon parallelism
+
+The generic task manager starts `hardware_concurrency` workers (24 on the
+tested 24-thread CPU), but the icon renderer runs on the main thread. In the
+tested `--cache` log the "Generating IconMap" phase from `23:00:06` to
+`23:02:19` has 2294 main-thread log lines and only ~30-40 lines on each
+worker; the workers are mostly loading raw caches. Icon rendering is serial.
+
+The ContentCompiler CLI exposes independent icon category flags:
+
+```text
+--asset --harvestable --node --voxelmesh --prefab --blueprint
+--customization --shape
+```
+
+`--cache` is the umbrella pass; `--create-atlas` builds the icon atlas;
+`--dont-overwrite-icons` is a global consumed by the icon process functions
+(checked at `DAT_1410cd7c0 + 0x28` in the tested build). `ContentCompilerTurbo.exe`
+runs each category flag in its own process, then a final
+`--cache --dont-overwrite-icons` pass. This gives each category its own main
+thread instead of serializing all of them on one. The helper staggers starts
+by ~1.1 s because the engine log filename has one-second resolution.
+
+If a category process fails, the helper runs the final cache pass **without**
+`--dont-overwrite-icons`, so the stock path regenerates any missing icons.
+If a future build removes a category flag, that process fails fast and the
+final cache pass still produces the complete result.

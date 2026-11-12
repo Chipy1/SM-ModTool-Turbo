@@ -7,6 +7,8 @@ struct TurboConfig {
     bool force_compile = false;
     bool log_enabled = true;
     bool priority_boost = true;
+    bool parallel_icons = true;
+    int icon_jobs = 8;
 };
 
 extern TurboConfig g_cfg;

@@ -1,4 +1,4 @@
 #pragma once
 #include <windows.h>
 
-void InstallHooks();
+void InstallHooks(HINSTANCE self);

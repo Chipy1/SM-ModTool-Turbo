@@ -510,13 +510,19 @@ bool ShouldSkipCompile(CompileRequest& req) {
 
 void NoteCompileStarted(HANDLE process, const CompileRequest& req) {
     if (process == NULL || process == INVALID_HANDLE_VALUE) return;
-    if (!req.has_fingerprint || req.compiler_sig == 0) return;
+    if (!req.has_fingerprint || req.compiler_sig == 0) {
+        LogLine(L"compile watcher not started (fingerprint=%d sig=%d)",
+                req.has_fingerprint ? 1 : 0, (int)req.compiler_sig);
+        return;
+    }
 
     HANDLE dup = NULL;
     if (!DuplicateHandle(GetCurrentProcess(), process, GetCurrentProcess(), &dup,
                          PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, 0)) {
+        LogLine(L"could not duplicate compiler handle: %lu", GetLastError());
         return;
     }
+    LogLine(L"watching compiler process for %s", req.ugc_path.c_str());
     WatcherCtx* ctx = new (std::nothrow) WatcherCtx;
     if (!ctx) {
         CloseHandle(dup);

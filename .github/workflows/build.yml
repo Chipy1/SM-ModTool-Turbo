@@ -22,4 +22,5 @@ jobs:
           name: sm-modtool-turbo
           path: |
             dist/d3d11.dll
+            dist/ContentCompilerTurbo.exe
             dist/ModToolTurbo.ini

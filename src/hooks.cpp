@@ -119,6 +119,8 @@ static std::wstring GetCommandInterpreter() {
     return L"C:\\Windows\\System32\\cmd.exe";
 }
 
+static HMODULE g_selfModule = NULL;
+
 static BOOL WINAPI HookedCreateProcessW(
     LPCWSTR applicationName, LPWSTR commandLine,
     LPSECURITY_ATTRIBUTES processAttributes, LPSECURITY_ATTRIBUTES threadAttributes,
@@ -148,6 +150,36 @@ static BOOL WINAPI HookedCreateProcessW(
                 LogLine(L"no-op compiler launch failed: %lu", GetLastError());
             }
             return ok;
+        }
+
+        if (g_cfg.parallel_icons && g_selfModule) {
+            std::wstring helper = JoinPath(GetSelfDir(g_selfModule), L"ContentCompilerTurbo.exe");
+            if (FileExists(helper)) {
+                std::wstring hc = L"\"" + helper + L"\" --compiler=\"" + req.compiler_path +
+                                  L"\" --ugc=\"" + req.ugc_path + L"\"";
+                if (wcsstr(req.command_line.c_str(), L"--dont-overwrite-icons")) {
+                    hc += L" --dont-overwrite-icons";
+                }
+                hc += L" --jobs=" + std::to_wstring(g_cfg.icon_jobs);
+                std::vector<wchar_t> hb(hc.begin(), hc.end());
+                hb.push_back(0);
+                DWORD hflags = (creationFlags | CREATE_NO_WINDOW) & ~CREATE_NEW_CONSOLE;
+                LogLine(L"launching parallel icon helper: %s", hc.c_str());
+                BOOL hok = RealCreateProcessW(helper.c_str(), hb.data(),
+                                              processAttributes, threadAttributes, inheritHandles,
+                                              hflags, environment, currentDirectory, startupInfo,
+                                              processInformation);
+                if (hok) {
+                    if (processInformation && processInformation->hProcess) {
+                        if (g_cfg.priority_boost) {
+                            SetPriorityClass(processInformation->hProcess, ABOVE_NORMAL_PRIORITY_CLASS);
+                        }
+                        NoteCompileStarted(processInformation->hProcess, req);
+                    }
+                    return hok;
+                }
+                LogLine(L"parallel icon helper failed to start: %lu; falling back", GetLastError());
+            }
         }
 
         BOOL ok = RealCreateProcessW(applicationName, commandLine,
@@ -342,7 +374,8 @@ static DWORD WINAPI ConfirmationHookThread(LPVOID) {
     return 0;
 }
 
-void InstallHooks() {
+void InstallHooks(HINSTANCE self) {
+    g_selfModule = (HMODULE)self;
     HMODULE module = GetModuleHandleW(NULL);
     if (!module) return;
 

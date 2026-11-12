@@ -11,4 +11,10 @@ x86_64-w64-mingw32-g++ \
   src/hooks.cpp src/d3d11_exports.cpp src/dllmain.cpp \
   -lkernel32 -luser32
 cp ModToolTurbo.ini dist/ModToolTurbo.ini
-echo "built dist/d3d11.dll"
+x86_64-w64-mingw32-g++ \
+  -std=c++17 -O2 -Wall -Wextra -municode \
+  -static -static-libgcc -static-libstdc++ \
+  -Wl,--no-insert-timestamp \
+  -o dist/ContentCompilerTurbo.exe src/cc_turbo.cpp \
+  -lkernel32
+echo "built dist/d3d11.dll and dist/ContentCompilerTurbo.exe"
