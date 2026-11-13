@@ -433,6 +433,19 @@ void CompileCacheInit(HINSTANCE self) {
     g_state_path = StateFilePath(self);
 }
 
+static std::wstring ExtractCompilerExecutable(const std::wstring& cmdline) {
+    std::wstring lower = LowerCopy(cmdline);
+    const std::wstring needle = L"contentcompiler.exe";
+    size_t pos = lower.find(needle);
+    if (pos == std::wstring::npos) return std::wstring();
+    size_t end = pos + needle.size();
+    size_t start = 0;
+    while (start < end && iswspace(cmdline[start])) ++start;
+    std::wstring exe = cmdline.substr(start, end - start);
+    if (!exe.empty() && exe[0] == L'"') exe = exe.substr(1);
+    return exe;
+}
+
 bool ParseContentCompilerInvocation(const wchar_t* application_name,
                                     const wchar_t* command_line,
                                     CompileRequest& out) {
@@ -446,20 +459,15 @@ bool ParseContentCompilerInvocation(const wchar_t* application_name,
     std::wstring ugc;
     if (!ExtractUgcPath(cmd, ugc)) return false;
 
-    std::wstring commandExe = FirstToken(cmd);
-    if (!commandExe.empty() && commandExe.size() >= 2 &&
-        commandExe[0] == L'"' && commandExe[commandExe.size() - 1] == L'"') {
-        commandExe = commandExe.substr(1, commandExe.size() - 2);
-    }
-
-    std::wstring exe;
-    if (!commandExe.empty() &&
-        LowerCopy(GetBaseName(commandExe)).find(L"contentcompiler") != std::wstring::npos) {
-        exe = commandExe;
-    } else if (application_name && *application_name) {
+    std::wstring exe = ExtractCompilerExecutable(cmd);
+    if (exe.empty() && application_name && *application_name) {
         exe = application_name;
-    } else {
-        exe = commandExe;
+    }
+    if (exe.empty()) {
+        exe = FirstToken(cmd);
+        if (!exe.empty() && exe.size() >= 2 && exe[0] == L'"' && exe[exe.size() - 1] == L'"') {
+            exe = exe.substr(1, exe.size() - 2);
+        }
     }
     if (exe.empty()) return false;
 

@@ -155,8 +155,8 @@ static BOOL WINAPI HookedCreateProcessW(
         if (g_cfg.parallel_icons && g_selfModule) {
             std::wstring helper = JoinPath(GetSelfDir(g_selfModule), L"ContentCompilerTurbo.exe");
             if (FileExists(helper)) {
-                std::wstring hc = L"\"" + helper + L"\" --compiler=\"" + req.compiler_path +
-                                  L"\" --ugc=\"" + req.ugc_path + L"\"";
+                std::wstring hc = L"\"" + helper + L"\" --compiler \"" + req.compiler_path +
+                                  L"\" --ugc \"" + req.ugc_path + L"\"";
                 if (wcsstr(req.command_line.c_str(), L"--dont-overwrite-icons")) {
                     hc += L" --dont-overwrite-icons";
                 }
