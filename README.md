@@ -9,10 +9,6 @@ A drop-in helper for the **Scrap Mechanic Mod Tool** that:
   `ContentCompiler.exe` build are unchanged and the generated `Cache` still
   exists, the compiler process is skipped. The first run is unchanged; later
   uploads of the same content are much faster.
-- **Parallel icon compilation** — the stock icon renderer runs every icon on
-  one main thread. `ContentCompilerTurbo.exe` runs the eight independent icon
-  categories in separate `ContentCompiler.exe` processes, then lets one final
-  pass build the cache and atlas.
 - Leaves `ModTool.exe`, the game and all mod files untouched. It is a
   `d3d11.dll` proxy loaded by the Mod Tool itself.
 
@@ -21,8 +17,8 @@ A drop-in helper for the **Scrap Mechanic Mod Tool** that:
 - `ModTool.exe` SHA-256:
   `853dc33c1a6ee300f4152cfc76564c71928efdc0d34fc7bcd4b3e85cbaa9df4e`
 - Scrap Mechanic 1.0.6.889 (the Mod Tool shipped with that build).
-- `dist/d3d11.dll` (v1.0.4) SHA-256:
-  `3d1c45305e1629e1c08facc0aae47ceec261a9a2dd716ce1fc070e1da157b979`
+- `dist/d3d11.dll` (v1.0.5) SHA-256:
+  `b7b02d152e3421d7699efdd1619425f71c8c7209a76d2e521119bc6b7212c4dd`
 
 The tool is deliberately **not tied to fixed addresses**. It uses the
 Mod Tool's import table and byte patterns, so a new Mod Tool build will
@@ -35,7 +31,6 @@ either keep working or disable the affected feature and write a warning to
 2. Copy these two files into the same folder as `ModTool.exe`
    (normally `...\Scrap Mechanic Mod Tool\Release`):
    - `d3d11.dll`
-   - `ContentCompilerTurbo.exe`
    - `ModToolTurbo.ini`
 3. Start the Mod Tool. Check `ModToolTurbo.log` in the same folder.
 
@@ -83,12 +78,17 @@ PriorityBoost=1
 | `Compile/SkipUnchanged` | `1` | Skip `ContentCompiler.exe` when content and cache are unchanged. |
 | `Compile/Force` | `0` | Always run `ContentCompiler.exe` (useful after changing the game build). |
 | `Compile/PriorityBoost` | `1` | Run the compiler above normal priority. |
-| `Compile/ParallelIcons` | `1` | Run the eight icon categories in parallel. |
-| `Compile/IconJobs` | `8` | Concurrent icon category processes (1-8). |
+| `Compile/SkipCompiler` | `0` | Skip ContentCompiler entirely and publish directly. |
+| `Compile/ReuseIcons` | `0` | Pass `--dont-overwrite-icons`; reuse existing icons. |
 
 If a file was removed or edited, the next upload compiles normally.
 Deleting `%LOCALAPPDATA%\SMModToolTurbo\compile-cache.txt` also forces one
 fresh compile.
+
+`SkipCompiler=1` bypasses the compiler completely. `ReuseIcons=1` keeps the
+single compiler process but passes `--dont-overwrite-icons`, so existing
+stock icons are not rendered again; only missing icons are generated. Set it
+back to `0` if a mod's generated icons need to be refreshed.
 
 ## How it works
 
@@ -104,16 +104,6 @@ fresh compile.
   replaces that vtable slot and invokes the dialog's "yes"
   `std::function<void()>` callback for the three upload messages. A native
   `MessageBoxW` fallback with the same texts is included.
-- **Icon parallelism:** the Mod Tool imports `ContentCompiler.exe` with a
-  single `--cache` pass. The DLL starts `ContentCompilerTurbo.exe` instead.
-  The helper runs `--asset`, `--harvestable`, `--node`, `--voxelmesh`,
-  `--prefab`, `--blueprint`, `--customization` and `--shape` in separate
-  processes (staggered by ~1 s to keep the engine log files separate). Each
-  process renders its category on its own main thread. A final
-  `--cache --dont-overwrite-icons` pass builds the cache and atlas and skips
-  the icons that were just generated. If a category process fails, the final
-  cache pass runs without `--dont-overwrite-icons` so missing icons are
-  regenerated.
 - **Compile cache:** `CreateProcessW` is intercepted. The Mod Tool normally
   runs
   `ContentCompiler.exe --ugc="<mod>" --cache` before every upload (about
@@ -136,9 +126,8 @@ fresh compile.
 ## Files
 
 ```text
-dist/d3d11.dll             built proxy DLL
-dist/ContentCompilerTurbo.exe  parallel icon launcher
-dist/ModToolTurbo.ini      default configuration
+dist/d3d11.dll         built proxy DLL
+dist/ModToolTurbo.ini  default configuration
 src/                   source code
 build.sh               MinGW-w64 cross build
 docs/ANALYSIS.md       reverse-engineering notes for future Mod Tool builds
@@ -159,21 +148,16 @@ no MinGW runtime dependencies.
 The d3d11 forwarding, native confirmation fallback, compile-skip logic and
 cache-deletion invalidation were exercised with a Wine test harness. The
 MyGUI vtable hook was validated against the exact byte pattern, vtable slot
-and `std::function` layout of the tested `ModTool.exe`. The parallel icon
-helper was tested with a fake compiler: all eight category processes
-overlapped, the cache/atlas pass ran after them, and a forced category
-failure correctly fell back to the non-skipping cache pass. The real Mod
-Tool was launched through Proton with the proxy installed: it loaded
-`d3d11.dll`, installed the `CreateProcessW`/`MessageBoxW` IAT hooks and the
-MyGUI confirmation hook. The actual Workshop upload click and the real
-D3D11 icon rendering were not triggered end-to-end here.
+and `std::function` layout of the tested `ModTool.exe`. The real Mod Tool was
+launched through Proton with the proxy installed: it loaded `d3d11.dll`,
+installed the `CreateProcessW`/`MessageBoxW` IAT hooks and the MyGUI
+confirmation hook. The actual Workshop upload click was not triggered
+end-to-end here.
 
 ## Limitations
 
 - The Mod Tool must still run its normal validation and Workshop upload.
   This tool only removes the confirmation click and the redundant compile.
-- Parallel icon compilation starts up to eight engine instances. Peak RAM
-  and CPU use are higher; reduce `IconJobs` if the machine is small.
 - The d3d11 proxy exports the standard D3D11 entry points and safe stubs
   for the undocumented Core* exports, so a future Mod Tool that imports a
   different subset still loads. Only `D3D11CreateDevice` and

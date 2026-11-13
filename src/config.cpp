@@ -12,8 +12,6 @@ void ConfigLoad(HINSTANCE self) {
     g_cfg.force_compile = GetPrivateProfileIntW(L"Compile", L"Force", 0, ini.c_str()) != 0;
     g_cfg.log_enabled = GetPrivateProfileIntW(L"General", L"Log", 1, ini.c_str()) != 0;
     g_cfg.priority_boost = GetPrivateProfileIntW(L"Compile", L"PriorityBoost", 1, ini.c_str()) != 0;
-    g_cfg.parallel_icons = GetPrivateProfileIntW(L"Compile", L"ParallelIcons", 1, ini.c_str()) != 0;
-    g_cfg.icon_jobs = GetPrivateProfileIntW(L"Compile", L"IconJobs", 8, ini.c_str());
-    if (g_cfg.icon_jobs < 1) g_cfg.icon_jobs = 1;
-    if (g_cfg.icon_jobs > 32) g_cfg.icon_jobs = 32;
+    g_cfg.skip_compiler = GetPrivateProfileIntW(L"Compile", L"SkipCompiler", 0, ini.c_str()) != 0;
+    g_cfg.reuse_icons = GetPrivateProfileIntW(L"Compile", L"ReuseIcons", 0, ini.c_str()) != 0;
 }

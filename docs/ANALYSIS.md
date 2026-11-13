@@ -135,30 +135,21 @@ If a pattern is missing, the affected feature disables itself and logs a
 warning; it does not patch random code.
 
 
-## ContentCompiler icon parallelism
+## ContentCompiler icon phase
 
 The generic task manager starts `hardware_concurrency` workers (24 on the
-tested 24-thread CPU), but the icon renderer runs on the main thread. In the
-tested `--cache` log the "Generating IconMap" phase from `23:00:06` to
-`23:02:19` has 2294 main-thread log lines and only ~30-40 lines on each
-worker; the workers are mostly loading raw caches. Icon rendering is serial.
+tested CPU), but the icon renderer runs on the main thread. In the tested
+`--cache` log the "Generating IconMap" phase has 2294 main-thread log lines
+and only ~30-40 lines on each worker; the workers are mostly loading raw
+caches. The engine icon renderer is effectively single-threaded.
 
-The ContentCompiler CLI exposes independent icon category flags:
+A multi-process split of the independent icon category flags was tested
+(`--asset`, `--harvestable`, `--node`, `--voxelmesh`, `--prefab`,
+`--blueprint`, `--customization`, `--shape`) but reverted: every process
+pays the full engine initialization (≈8 s), which made the common case
+slower and multiplied memory use. The delivered path is one
+`ContentCompiler.exe --cache` process, as the Mod Tool expects.
 
-```text
---asset --harvestable --node --voxelmesh --prefab --blueprint
---customization --shape
-```
-
-`--cache` is the umbrella pass; `--create-atlas` builds the icon atlas;
-`--dont-overwrite-icons` is a global consumed by the icon process functions
-(checked at `DAT_1410cd7c0 + 0x28` in the tested build). `ContentCompilerTurbo.exe`
-runs each category flag in its own process, then a final
-`--cache --dont-overwrite-icons` pass. This gives each category its own main
-thread instead of serializing all of them on one. The helper staggers starts
-by ~1.1 s because the engine log filename has one-second resolution.
-
-If a category process fails, the helper runs the final cache pass **without**
-`--dont-overwrite-icons`, so the stock path regenerates any missing icons.
-If a future build removes a category flag, that process fails fast and the
-final cache pass still produces the complete result.
+`[Compile] SkipCompiler=1` skips the compiler entirely and lets the Mod Tool
+proceed directly to the Steam publish. It performs no icon/cache generation
+and no content validation.

@@ -119,7 +119,22 @@ static std::wstring GetCommandInterpreter() {
     return L"C:\\Windows\\System32\\cmd.exe";
 }
 
-static HMODULE g_selfModule = NULL;
+static BOOL LaunchNoop(LPSECURITY_ATTRIBUTES processAttributes,
+                       LPSECURITY_ATTRIBUTES threadAttributes, BOOL inheritHandles,
+                       DWORD creationFlags, LPVOID environment, LPCWSTR currentDirectory,
+                       LPSTARTUPINFOW startupInfo, LPPROCESS_INFORMATION processInformation) {
+    std::wstring interpreter = GetCommandInterpreter();
+    std::wstring alt = L"\"" + interpreter + L"\" /d /c exit 0";
+    std::vector<wchar_t> altLine(alt.begin(), alt.end());
+    altLine.push_back(0);
+    DWORD flags = (creationFlags | CREATE_NO_WINDOW) & ~CREATE_NEW_CONSOLE;
+    BOOL ok = RealCreateProcessW(interpreter.c_str(), altLine.data(),
+                                 processAttributes, threadAttributes, inheritHandles,
+                                 flags, environment, currentDirectory, startupInfo,
+                                 processInformation);
+    if (!ok) LogLine(L"no-op compiler launch failed: %lu", GetLastError());
+    return ok;
+}
 
 static BOOL WINAPI HookedCreateProcessW(
     LPCWSTR applicationName, LPWSTR commandLine,
@@ -134,55 +149,33 @@ static BOOL WINAPI HookedCreateProcessW(
 
     CompileRequest req;
     if (ParseContentCompilerInvocation(applicationName, commandLine, req)) {
+        if (g_cfg.skip_compiler) {
+            LogLine(L"SkipCompiler=1: skipping ContentCompiler for %s", req.ugc_path.c_str());
+            return LaunchNoop(processAttributes, threadAttributes, inheritHandles,
+                              creationFlags, environment, currentDirectory, startupInfo,
+                              processInformation);
+        }
         if (ShouldSkipCompile(req)) {
-            std::wstring interpreter = GetCommandInterpreter();
-            std::wstring alt = L"\"" + interpreter + L"\" /d /c exit 0";
-            std::vector<wchar_t> altLine(alt.begin(), alt.end());
-            altLine.push_back(0);
-
-            DWORD flags = (creationFlags | CREATE_NO_WINDOW) & ~CREATE_NEW_CONSOLE;
             LogLine(L"launching no-op instead of content compiler: %s", commandLine);
-            BOOL ok = RealCreateProcessW(interpreter.c_str(), altLine.data(),
-                                         processAttributes, threadAttributes, inheritHandles,
-                                         flags, environment, currentDirectory, startupInfo,
-                                         processInformation);
-            if (!ok) {
-                LogLine(L"no-op compiler launch failed: %lu", GetLastError());
-            }
-            return ok;
+            return LaunchNoop(processAttributes, threadAttributes, inheritHandles,
+                              creationFlags, environment, currentDirectory, startupInfo,
+                              processInformation);
         }
 
-        if (g_cfg.parallel_icons && g_selfModule) {
-            std::wstring helper = JoinPath(GetSelfDir(g_selfModule), L"ContentCompilerTurbo.exe");
-            if (FileExists(helper)) {
-                std::wstring hc = L"\"" + helper + L"\" --compiler \"" + req.compiler_path +
-                                  L"\" --ugc \"" + req.ugc_path + L"\"";
-                if (wcsstr(req.command_line.c_str(), L"--dont-overwrite-icons")) {
-                    hc += L" --dont-overwrite-icons";
-                }
-                hc += L" --jobs=" + std::to_wstring(g_cfg.icon_jobs);
-                std::vector<wchar_t> hb(hc.begin(), hc.end());
-                hb.push_back(0);
-                DWORD hflags = (creationFlags | CREATE_NO_WINDOW) & ~CREATE_NEW_CONSOLE;
-                LogLine(L"launching parallel icon helper: %s", hc.c_str());
-                BOOL hok = RealCreateProcessW(helper.c_str(), hb.data(),
-                                              processAttributes, threadAttributes, inheritHandles,
-                                              hflags, environment, currentDirectory, startupInfo,
-                                              processInformation);
-                if (hok) {
-                    if (processInformation && processInformation->hProcess) {
-                        if (g_cfg.priority_boost) {
-                            SetPriorityClass(processInformation->hProcess, ABOVE_NORMAL_PRIORITY_CLASS);
-                        }
-                        NoteCompileStarted(processInformation->hProcess, req);
-                    }
-                    return hok;
-                }
-                LogLine(L"parallel icon helper failed to start: %lu; falling back", GetLastError());
-            }
+        std::wstring realCommand = commandLine ? commandLine : L"";
+        std::vector<wchar_t> realLine;
+        LPWSTR realCommandLine = commandLine;
+        if (g_cfg.reuse_icons && !realCommand.empty() &&
+            wcsstr(realCommand.c_str(), L"--cache") &&
+            !wcsstr(realCommand.c_str(), L"--dont-overwrite-icons")) {
+            realCommand += L" --dont-overwrite-icons";
+            realLine.assign(realCommand.begin(), realCommand.end());
+            realLine.push_back(0);
+            realCommandLine = realLine.data();
+            LogLine(L"ReuseIcons=1: appending --dont-overwrite-icons");
         }
 
-        BOOL ok = RealCreateProcessW(applicationName, commandLine,
+        BOOL ok = RealCreateProcessW(applicationName, realCommandLine,
                                      processAttributes, threadAttributes, inheritHandles,
                                      creationFlags, environment, currentDirectory, startupInfo,
                                      processInformation);
@@ -374,8 +367,7 @@ static DWORD WINAPI ConfirmationHookThread(LPVOID) {
     return 0;
 }
 
-void InstallHooks(HINSTANCE self) {
-    g_selfModule = (HMODULE)self;
+void InstallHooks() {
     HMODULE module = GetModuleHandleW(NULL);
     if (!module) return;
 

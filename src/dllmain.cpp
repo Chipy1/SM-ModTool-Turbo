@@ -10,7 +10,7 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID) {
         ConfigLoad(self);
         LogInit(self);
         CompileCacheInit(self);
-        InstallHooks(self);
+        InstallHooks();
         LogLine(L"ModTool Turbo loaded");
     } else if (reason == DLL_PROCESS_DETACH) {
         LogLine(L"ModTool Turbo unloading");

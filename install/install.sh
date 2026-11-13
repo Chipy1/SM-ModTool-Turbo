@@ -12,8 +12,8 @@ if [ ! -f "$target/ModTool.exe" ]; then
     echo "error: $target/ModTool.exe not found" >&2
     exit 1
 fi
-if [ ! -f "$here/dist/d3d11.dll" ] || [ ! -f "$here/dist/ContentCompilerTurbo.exe" ]; then
-    echo "error: run ./build.sh first (dist/d3d11.dll or dist/ContentCompilerTurbo.exe missing)" >&2
+if [ ! -f "$here/dist/d3d11.dll" ]; then
+    echo "error: run ./build.sh first (dist/d3d11.dll missing)" >&2
     exit 1
 fi
 stamp=$(date +%Y%m%d-%H%M%S)
@@ -29,6 +29,5 @@ if [ -f "$target/ModToolTurbo.ini" ]; then
     echo "backed up existing ModToolTurbo.ini -> ModToolTurbo.ini.bak.$stamp"
 fi
 cp "$here/dist/d3d11.dll" "$target/d3d11.dll"
-cp "$here/dist/ContentCompilerTurbo.exe" "$target/ContentCompilerTurbo.exe"
 cp "$here/dist/ModToolTurbo.ini" "$target/ModToolTurbo.ini"
 echo "installed into $target"
